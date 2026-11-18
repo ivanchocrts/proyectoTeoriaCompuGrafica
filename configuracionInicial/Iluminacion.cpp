@@ -1,3 +1,8 @@
+// Práctica Unificada: Iluminación Orbital y Animación de Agua
+// Estudiante: Iván Daniel Cortés Alvarado
+// commit de prueba
+//agua modificada
+
 #include <iostream>
 #include <string>
 #include <cmath>
@@ -14,13 +19,7 @@
 #include "Shader.h"
 #include "Camera.h"
 #include "Model.h"
-#include "agua.h"	
-#include "meshAnim.h"
-#include "modelAnim.h"
-
-// Audio
-#define MINIAUDIO_IMPLEMENTATION
-#include "miniaudio.h"
+#include "agua.h"		
 
 // Dimensiones de ventana
 const GLuint WIDTH = 800, HEIGHT = 600;
@@ -91,431 +90,8 @@ glm::vec3 skyColor(0.02f, 0.02f, 0.08f);
 GLfloat deltaTime = 0.0f;
 GLfloat lastFrame = 0.0f;
 
-//Objeto que controla el agua animada
+// AGUA Objeto que controla el agua animada
 AguaAnimada aguaAnimada;
-
-struct TextHUD {
-    GLuint VAO, VBO, shaderProgram;
-
-    void init() {
-        const char* vsSource = R"(
-            #version 330 core
-            layout (location = 0) in vec2 aPos;
-            uniform mat4 projection;
-            void main() {
-                gl_Position = projection * vec4(aPos, 0.0, 1.0);
-            }
-        )";
-
-        const char* fsSource = R"(
-            #version 330 core
-            out vec4 FragColor;
-            uniform vec4 textColor;
-            void main() {
-                FragColor = textColor;
-            }
-        )";
-
-        GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, 1, &vsSource, NULL);
-        glCompileShader(vs);
-
-        GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, 1, &fsSource, NULL);
-        glCompileShader(fs);
-
-        shaderProgram = glCreateProgram();
-        glAttachShader(shaderProgram, vs);
-        glAttachShader(shaderProgram, fs);
-        glLinkProgram(shaderProgram);
-
-        glDeleteShader(vs);
-        glDeleteShader(fs);
-
-        glGenVertexArrays(1, &VAO);
-        glGenBuffers(1, &VBO);
-
-        glBindVertexArray(VAO);
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 2 * 10000, NULL, GL_DYNAMIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
-    }
-
-    void drawTextBottom(const std::string& line1, const std::string& line2, int screenWidth, int screenHeight, float scale = 2.0f) {
-        static char buffer1[99999];
-        static char buffer2[99999];
-
-        int quads1 = stb_easy_font_print(0, 0, (char*)line1.c_str(), NULL, buffer1, sizeof(buffer1));
-        int quads2 = stb_easy_font_print(0, 0, (char*)line2.c_str(), NULL, buffer2, sizeof(buffer2));
-
-        float width1 = stb_easy_font_width((char*)line1.c_str()) * scale;
-        float width2 = stb_easy_font_width((char*)line2.c_str()) * scale;
-        float maxWidth = (width1 > width2) ? width1 : width2;
-
-        float lineHeight = 12.0f * scale;
-        float lineSpacing = 6.0f * scale; 
-        float totalHeight = (lineHeight * 2.0f) + lineSpacing;
-
-        float boxStartY = screenHeight - totalHeight - 35.0f;
-        float startX1 = (screenWidth - width1) / 2.0f;
-        float startY1 = boxStartY;
-
-        float startX2 = (screenWidth - width2) / 2.0f;
-        float startY2 = boxStartY + lineHeight + lineSpacing;
-
-        std::vector<float> vertices;
-        vertices.reserve((quads1 + quads2) * 12);
-
-        auto appendQuads = [&](char* buf, int numQuads, float offsetX, float offsetY) {
-            float* ptr = (float*)buf;
-            for (int i = 0; i < numQuads; i++) {
-                float x0 = ptr[0] * scale + offsetX; float y0 = ptr[1] * scale + offsetY;
-                float x1 = ptr[4] * scale + offsetX; float y1 = ptr[5] * scale + offsetY;
-                float x2 = ptr[8] * scale + offsetX; float y2 = ptr[9] * scale + offsetY;
-                float x3 = ptr[12] * scale + offsetX; float y3 = ptr[13] * scale + offsetY;
-
-                // Tri�ngulo 1
-                vertices.push_back(x0); vertices.push_back(y0);
-                vertices.push_back(x1); vertices.push_back(y1);
-                vertices.push_back(x2); vertices.push_back(y2);
-                // Tri�ngulo 2
-                vertices.push_back(x0); vertices.push_back(y0);
-                vertices.push_back(x2); vertices.push_back(y2);
-                vertices.push_back(x3); vertices.push_back(y3);
-
-                ptr += 16;
-            }
-            };
-
-        appendQuads(buffer1, quads1, startX1, startY1);
-        appendQuads(buffer2, quads2, startX2, startY2);
-
-        glm::mat4 ortho = glm::ortho(0.0f, (float)screenWidth, (float)screenHeight, 0.0f);
-
-        glDisable(GL_DEPTH_TEST);
-        glUseProgram(shaderProgram);
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(ortho));
-        glBindVertexArray(VAO);
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-
-        float padX = 22.0f, padY = 14.0f;
-        float boxStartX = (screenWidth - maxWidth) / 2.0f;
-        float bx0 = boxStartX - padX;
-        float by0 = boxStartY - padY;
-        float bx1 = boxStartX + maxWidth + padX;
-        float by1 = boxStartY + totalHeight + padY;
-
-        float bgVerts[] = {
-            bx0, by0,  bx1, by0,  bx1, by1,
-            bx0, by0,  bx1, by1,  bx0, by1
-        };
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(bgVerts), bgVerts);
-        glUniform4f(glGetUniformLocation(shaderProgram, "textColor"), 0.05f, 0.05f, 0.1f, 0.82f);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        int totalQuads = quads1 + quads2;
-        glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(float), vertices.data());
-        glUniform4f(glGetUniformLocation(shaderProgram, "textColor"), 1.0f, 0.92f, 0.70f, 1.0f);
-        glDrawArrays(GL_TRIANGLES, 0, totalQuads * 6);
-
-        glBindVertexArray(0);
-        glEnable(GL_DEPTH_TEST);
-    }
-};
-
-TextHUD hudTexto;
-
-// ======================================================================================
-// AGUA. FORMA EXACTA DEL FOSO 
-// ======================================================================================
-const int NUM_TRIS_FOSO = 12;
-const float FOSO_TRIS[NUM_TRIS_FOSO][6] = {
-    { 0.338f, -0.219f,  30.316f, -0.138f,  13.040f, -50.046f },
-    { 13.040f, -50.046f,  2.540f, -50.046f,  2.400f, -0.193f },
-    { -2.460f, -50.046f,  -12.960f, -50.046f,  -12.960f, -0.000f },
-    { -12.960f, -0.000f,  -2.274f, -0.219f,  -2.460f, -50.046f },
-    { 13.040f, -50.046f,  30.316f, -0.138f,  30.358f, -12.041f },
-    { 30.358f, -12.041f,  43.040f, -12.041f,  43.050f, -76.628f },
-    { 13.040f, -50.046f,  30.358f, -12.041f,  43.050f, -76.628f },
-    { 12.960f, -76.586f,  13.040f, -50.046f,  43.050f, -76.628f },
-    { -42.947f, -76.632f,  -42.960f, -12.041f,  -12.960f, -11.959f },
-    { -12.960f, -11.959f,  -12.960f, -76.549f,  -42.947f, -76.632f },
-    { -30.222f, -0.127f,  -12.960f, -0.147f,  -12.960f, -11.959f },
-    { -12.960f, -11.959f,  -30.017f, -12.041f,  -30.222f, -0.127f },
-};
-
-// Altura del agua
-const float NIVEL_AGUA = -0.1f;
-
-//Keyframes 
-float	posX = 0.0f,
-posY = 0.0f,
-posZ = 0.0f,
-giroFantasma = 0.0f;
-
-float	incX = 0.0f,
-incY = 0.0f,
-incZ = 0.0f,
-giroFantasmaInc = 0.0f;
-
-float myTime = 0.0f;
-
-int contador = 0;
-
-#define MAX_FRAMES 12
-int i_max_steps = 30;
-int i_curr_steps = 0;
-typedef struct _frame
-{
-    float posX;		//Variable para PosicionX
-    float posY;		//Variable para PosicionY
-    float posZ;		//Variable para PosicionZ
-    float rotY;
-
-}FRAME;
-
-FRAME KeyFrame[MAX_FRAMES];
-int FrameIndex = 0;			
-bool play = false;
-int playIndex = 0;
-
-void saveFrame(void)
-{
-    std::cout << "Frame Index = " << FrameIndex << std::endl;
-
-    KeyFrame[FrameIndex].posX = posX;
-    KeyFrame[FrameIndex].posY = posY;
-    KeyFrame[FrameIndex].posZ = posZ;
-    KeyFrame[FrameIndex].rotY = giroFantasma;
-
-    FrameIndex++;
-}
-
-void resetElements(void)
-{
-    posX = KeyFrame[0].posX;
-    posY = KeyFrame[0].posY;
-    posZ = KeyFrame[0].posZ;
-    giroFantasma = KeyFrame[0].rotY;
-}
-
-void interpolation(void)
-{
-    incX = (KeyFrame[playIndex + 1].posX - KeyFrame[playIndex].posX) / i_max_steps;
-    incY = (KeyFrame[playIndex + 1].posY - KeyFrame[playIndex].posY) / i_max_steps;
-    incZ = (KeyFrame[playIndex + 1].posZ - KeyFrame[playIndex].posZ) / i_max_steps;
-    giroFantasmaInc = (KeyFrame[playIndex + 1].rotY - KeyFrame[playIndex].rotY) / i_max_steps;
-}
-
-void animate(void)
-{
-    if (play)
-    {
-        if (i_curr_steps >= i_max_steps)
-        {
-            playIndex++;
-            if (playIndex > FrameIndex - 2)
-            {
-                std::cout << "Animation ended" << std::endl;
-                playIndex = 0;
-                play = false;
-            }
-            else
-            {
-                i_curr_steps = 0;
-                interpolation();
-            }
-        }
-        else
-        {
-            posX += incX;
-            posY += incY;
-            posZ += incZ;
-            giroFantasma += giroFantasmaInc;
-
-            i_curr_steps++;
-        }
-    }
-
-    if (animTraja)
-    {
-        float velAvance = 4.0f * deltaTime;
-        float velGiro = 30.0f * deltaTime;
-
-        // Etapa 0: Gira para quedar recto mirando hacia el fondo (-Z)
-        if (etapaTraja == 0) {
-            if (trajaRotY > 0.0f)
-                trajaRotY -= velGiro;
-            else {
-                trajaRotY = 0.0f;
-                etapaTraja = 1;
-            }
-        }
-
-        // Etapa 1: Avanza hacia la siguiente costa dejando espacio libre (la costa est� en -50, paramos en -42)
-        else if (etapaTraja == 1) {
-            if (trajaZ > -42.0f)
-                trajaZ -= velAvance;
-            else {
-                trajaZ = -42.0f;
-                etapaTraja = 2;
-            }
-        }
-
-        // Etapa 2: Gira 90 grados como estacion�ndose paralelo a la costa (mirando hacia -X)
-        else if (etapaTraja == 2) {
-            if (trajaRotY < 90.0f)
-                trajaRotY += velGiro;
-            else {
-                trajaRotY = 90.0f;
-                etapaTraja = 3;
-            }
-        }
-
-        // Etapa 3: Se mueve un poco hacia -X (de -8.0 a -16.0, dejando espacio para girar)
-        else if (etapaTraja == 3) {
-            if (trajaX > -16.0f)
-                trajaX -= velAvance;
-            else {
-                trajaX = -16.0f;
-                etapaTraja = 4;
-            }
-        }
-
-        // Etapa 4: Hace otro giro para apuntar de regreso hacia el origen (+Z / diagonal)
-        else if (etapaTraja == 4) {
-            if (trajaRotY < 200.0f)
-                trajaRotY += velGiro;
-            else {
-                trajaRotY = 200.0f;
-                etapaTraja = 5;
-            }
-        }
-
-        // Etapa 5: Se mueve de regreso hacia el origen (-8.0 en X, -20.0 en Z)
-        else if (etapaTraja == 5) {
-            bool llegoZ = false;
-            bool llegoX = false;
-
-            if (trajaZ < -20.0f)
-                trajaZ += velAvance;
-            else {
-                trajaZ = -20.0f;
-                llegoZ = true;
-            }
-
-            // Avanza en X proporcionalmente para llegar al mismo tiempo que Z
-            if (trajaX < -8.0f)
-                trajaX += velAvance * 0.36f;
-            else {
-                trajaX = -8.0f;
-                llegoX = true;
-            }
-
-            if (llegoZ && llegoX) {
-                etapaTraja = 6;
-            }
-        }
-
-        // Etapa 6: Gira para quedarse estacionada exactamente como estaba al inicio (20 grados) y termina
-        else if (etapaTraja == 6) {
-            if (trajaRotY > 20.0f)
-                trajaRotY -= velGiro;
-            else {
-                trajaRotY = 20.0f;
-                etapaTraja = 0;
-                animTraja = false;
-            }
-        }
-    }
-}
-
-void cameraPerson(void) {
-    if (person == true) {
-
-        float angle = glm::radians(giroPerson);
-
-        glm::vec3 camPos(
-            personX - sin(angle) * cameraDistance,
-            personY + cameraHeight,
-            personZ - cos(angle) * cameraDistance
-        );
-
-        camera.SetPosition(camPos);
-
-        glm::vec3 target(
-            personX,
-            personY + cameraPitch * 0.1f, 
-            personZ
-        );
-
-        camera.SetFront(target - camPos);
-
-        if (mov) {
-            // ANIMACI�N DE CAMINAR
-            anguloCaminata += direccionCaminata * velocidadCaminata * deltaTime;
-
-            if (anguloCaminata >= 60.0f) {
-                anguloCaminata = 60.0f;
-                direccionCaminata = -1.0f;
-            }
-            else if (anguloCaminata <= -60.0f) {
-                anguloCaminata = -60.0f;
-                direccionCaminata = 1.0f;
-            }
-
-            // Alternar brazos
-            rotBrazoDer = anguloCaminata;
-            rotBrazoIzq = -anguloCaminata;
-
-            // Alternar piernas
-            rotPiernaDer = -anguloCaminata;
-            rotPiernaIzq = anguloCaminata;
-
-            mov = false;
-        }
-    }
-}
-
-void visuales() {
-
-    float angle = glm::radians(giroPerson);
-    if (verEscen) {
-        glm::vec3 camPos(0.0f, 50.0f, 80.0f);
-        camera.SetPosition(camPos);
-
-        glm::vec3 target(0.0f, 5.0f, 0.0f);
-        camera.SetFront(glm::normalize(target - camPos));
-
-        verEscen = false;
-    }
-    if (verAnim) {
-        glm::vec3 camPos(0.0f, 4.0f, 35.0f);
-        camera.SetPosition(camPos);
-
-        glm::vec3 target(0.0f, 3.0f, 23.0f);
-        camera.SetFront(glm::normalize(target - camPos));
-
-        verAnim = false;
-    }
-    if (verModel) {
-        glm::vec3 camPos(0.0f, 2.3f, -36.0f);
-        camera.SetPosition(camPos);
-
-        glm::vec3 direction(
-            0.0f,
-            0.2f,
-            -1.0f
-        );
-        camera.SetFront(direction);
-
-        verModel = false;
-    }
-
-}
 
 int main()
 {
@@ -584,13 +160,8 @@ int main()
     // Shaders
     Shader lightingShader("Shader/lighting.vs", "Shader/lighting.frag");
     Shader lampShader("Shader/lamp.vs", "Shader/lamp.frag");
-    Shader skyboxShader("Shader/skybox.vs", "Shader/skybox.frag");
-    AguaAnimada::crearArchivosShader("Shader");
-    Shader aguaShader("Shader/agua.vs", "Shader/agua.fs");
-    Shader animShader("Shader/anim.vs", "Shader/anim.fs");
-    Shader papelShader("Shader/papel.vs", "Shader/papel.frag");
-    Shader flameShader("Shader/flame.vs", "Shader/flame.frag");
-    hudTexto.init();
+    AguaAnimada::crearArchivosShader("Shader");						
+    Shader aguaShader("Shader/agua.vs", "Shader/agua.fs");		
 
     // Modelos
     Model escena_principal((char*)"Models/principal/principal.obj");
@@ -600,6 +171,7 @@ int main()
     Model papel((char*)"Models/papel/papel.obj");
 
     // ANIMACIONES 
+    Model agua((char*)"Models/agua.obj"); 
     Model sol((char*)"Models/modeloSol.obj");
     Model luna((char*)"Models/modeloLuna.obj");
     Model skyStars((char*)"Models/skybox/mc-stars.obj");
@@ -702,6 +274,17 @@ int main()
     aguaAnimada.colorAgua = glm::vec3(0.04f, 0.17f, 0.26f);
     aguaAnimada.texturaDelModelo = false;
 
+
+    // AGUA Parámetros de las olas. 
+    //   amplitud   = qué tan altas son las olas
+    //   frecuencia = qué tan juntas están (más chico = olas más anchas)
+    //   velocidad  = qué tan rápido se mueven
+    aguaAnimada.amplitud = 0.08f;
+    aguaAnimada.frecuencia = 1.0f;
+    aguaAnimada.velocidad = 1.8f;
+    aguaAnimada.transparencia = 0.85f;
+    aguaAnimada.texturaDelModelo = true;	
+    // aguaAnimada.colorAgua = glm::vec3(0.05f, 0.35f, 0.55f);
 
     lightingShader.Use();
     glUniform1i(glGetUniformLocation(lightingShader.Program, "material.diffuse"), 0);
@@ -829,16 +412,7 @@ int main()
         glUniformMatrix4fv(glGetUniformLocation(lightingShader.Program, "model"), 1, GL_FALSE, glm::value_ptr(modelEscena));
         escena_principal.Draw(lightingShader);
 
-        glm::mat4 modelOfrenda = glm::mat4(1.0f);
-        modelOfrenda = glm::translate(modelOfrenda, glm::vec3(19.0f, 0.0f, 5.0f));
-        modelOfrenda = glm::scale(modelOfrenda, glm::vec3(10.0f));
-        glUniformMatrix4fv(glGetUniformLocation(lightingShader.Program, "model"), 1, GL_FALSE, glm::value_ptr(modelOfrenda));
-        ofrenda.Draw(lightingShader);
-
-        modelOfrenda = glm::translate(glm::mat4(1.0f), glm::vec3(-19.0f, 0.0f, 5.0f));
-        modelOfrenda = glm::scale(modelOfrenda, glm::vec3(10.0f));
-        glUniformMatrix4fv(glGetUniformLocation(lightingShader.Program, "model"), 1, GL_FALSE, glm::value_ptr(modelOfrenda));
-        ofrenda2.Draw(lightingShader);
+        // (El agua ya NO se dibuja aquí: ahora se dibuja al final, con su propio shader)
 
         // ====================================================================
         // DIBUJAR FLAMAS DE LAS VELAS
@@ -1094,7 +668,7 @@ int main()
 
         float distCastillo = glm::distance(posJugXZ, glm::vec2(0.0f, -43.0f));
 
-        // Radios de activaci�n
+        // Radios de activación
         float radioPersonajes = 4.0f;
         float radioOfrenda = 7.0f;
         float radioTrajinera = 9.0f;
@@ -1136,6 +710,18 @@ int main()
                 SCREEN_WIDTH, SCREEN_HEIGHT, 1.9f
             );
         }
+
+        // ====================================================================
+        // [AGUA] AGUA ANIMADA (se dibuja al final porque es transparente)
+        // ====================================================================
+        // La luz del agua sigue al sol: de día brilla, de noche se oscurece
+        aguaAnimada.luzDir = dirSol;
+        float intensidadSol = glm::clamp(lightPos1.y / 35.0f, 0.15f, 1.0f);
+        aguaAnimada.luzColor = glm::vec3(1.0f, 0.97f, 0.9f) * intensidadSol;
+
+        glm::mat4 modelAgua(1.0f);	// si necesitas mover o escalar el agua, hazlo aquí
+        aguaAnimada.drawModelo(aguaShader, agua, modelAgua, view, projection,
+            camera.GetPosition(), (float)glfwGetTime());
 
         glfwSwapBuffers(window);
     }

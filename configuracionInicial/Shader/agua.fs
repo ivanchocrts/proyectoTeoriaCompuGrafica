@@ -34,12 +34,12 @@ void main()
 	}
 
 	// Las crestas de las olas se ven más claras (hace que el movimiento se note mucho)
-	float cresta = smoothstep(0.35, 1.0, Altura);
-	base = mix(base, vec3(0.45, 0.65, 0.80), cresta * brilloCrestas);
+	float cresta = smoothstep(0.2, 1.0, Altura);
+	base = mix(base, vec3(0.75, 0.92, 1.0), cresta * 0.6);
 
 	// Patrón que se mueve con el tiempo (da sensación de corriente aunque no haya textura)
 	float patron = sin(FragPos.x * 1.3 + uTime * 2.0) * sin(FragPos.z * 1.1 - uTime * 1.6);
-	base = clamp(base + patron * 0.03, 0.0, 1.0);
+	base = clamp(base + patron * 0.06, 0.0, 1.0);
 
 	vec3 N = normalize(Normal);
 	vec3 L = normalize(-lightDir);
@@ -53,8 +53,8 @@ void main()
 	vec3 ambient = 0.35 * base;
 	vec3 resultado = ambient
 					+ diff * base * lightColor
-					+ spec * lightColor * brilloEspecular
-					+ fresnel * vec3(0.15, 0.25, 0.35) * brilloFresnel;
+					+ spec * lightColor * 0.8
+					+ fresnel * vec3(0.3, 0.4, 0.5) * 0.4;
 
 	FragColor = vec4(resultado, alpha);
 }
