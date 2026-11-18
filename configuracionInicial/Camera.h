@@ -129,6 +129,17 @@ public:
 	{
 		return this->front;
 	}
+	
+	// NUEVOS MÉTODOS
+	void SetPosition(glm::vec3 newPosition)
+	{
+		this->position = newPosition;
+	}
+
+	void SetFront(glm::vec3 newFront)
+	{
+		this->front = glm::normalize(newFront);
+	}
 
 private:
 	// Camera Attributes

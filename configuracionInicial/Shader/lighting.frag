@@ -1,6 +1,8 @@
 #version 330 core
 
-#define NUMBER_OF_POINT_LIGHTS 1
+// Definimos el m谩ximo de luces
+#define NR_POINT_LIGHTS 12
+#define NR_SPOT_LIGHTS 2
 
 struct Material
 {
@@ -46,57 +48,84 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoords;
 
-out vec4 color;
+// Salida de color
+out vec4 FragColor;
 
 uniform vec3 viewPos;
 uniform DirLight dirLight;
-uniform PointLight pointLights[NUMBER_OF_POINT_LIGHTS];
-uniform SpotLight spotLight;
+
+// CORRECCI脫N: Arreglos de luces con el tama帽o correcto
+uniform PointLight pointLights[NR_POINT_LIGHTS];
+uniform SpotLight spotLights[NR_SPOT_LIGHTS];
+
+// CORRECCI脫N: Contadores para controlar cu谩ntas luces encendemos
+uniform int activePointLights;
+uniform int activeSpotLights;
+
 uniform Material material;
 uniform int transparency;
 
-// Uniformes para animaci髇 de agua
+// Uniformes para animaci贸n de agua
 uniform int isWater = 0;
 uniform float uTime = 0.0;
-uniform vec2 waterSpeed = vec2(0.02, 0.01); // Desplazamiento del mapa de textura
+uniform vec2 waterSpeed = vec2(0.02, 0.01); 
 
-// Prototipos de funciones
+// Efecto de emisi贸n (brillo propio)
+uniform int useEmission;
+uniform vec3 emissionColor;
+uniform float emissionStrength;
+
+// Prototipos de funciones (Exigen vec2 uv)
 vec3 CalcDirLight( DirLight light, vec3 normal, vec3 viewDir, vec2 uv );
 vec3 CalcPointLight( PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec2 uv );
 vec3 CalcSpotLight( SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec2 uv );
 
-void main( )
+void main()
 {
-    // Si el objeto es agua, desplaza progresivamente sus coordenadas UV
-    vec2 finalTexCoords = TexCoords;
-    if (isWater == 1)
-    {
-        finalTexCoords += uTime * waterSpeed;
+    // CORRECCI脫N: Rescatamos tu l贸gica de texturas original
+    vec2 uv = TexCoords;
+    if(isWater == 1) {
+        uv += waterSpeed * uTime;
     }
 
-    vec3 norm = normalize( Normal );
-    vec3 viewDir = normalize( viewPos - FragPos );
+    // Propiedades geom茅tricas base
+    vec3 norm = normalize(Normal);
+    vec3 viewDir = normalize(viewPos - FragPos);
     
-    // Iluminaci髇 Direccional (Sol)
-    vec3 result = CalcDirLight( dirLight, norm, viewDir, finalTexCoords );
+    // 1. Luz direccional (Luna) - AQU脥 PASAMOS 'uv'
+    vec3 result = CalcDirLight(dirLight, norm, viewDir, uv);
     
-    // Luces Puntuales (Luna)
-    for ( int i = 0; i < NUMBER_OF_POINT_LIGHTS; i++ )
-    {
-        result += CalcPointLight( pointLights[i], norm, FragPos, viewDir, finalTexCoords );
+    // 2. Luces Puntuales (Edificio)
+    for(int i = 0; i < NR_POINT_LIGHTS; i++) {
+        if(i < activePointLights) {
+            result += CalcPointLight(pointLights[i], norm, FragPos, viewDir, uv);
+        }
     }
     
-    // Spotlight
-    result += CalcSpotLight( spotLight, norm, FragPos, viewDir, finalTexCoords );
+    // 3. Luces Focales (Faroles)
+    for(int i = 0; i < NR_SPOT_LIGHTS; i++) {
+        if(i < activeSpotLights) {
+            result += CalcSpotLight(spotLights[i], norm, FragPos, viewDir, uv);
+        }
+    }    
     
-    // Canal Alfa de la textura difusa
-    float alphaChannel = texture(material.diffuse, finalTexCoords).a;
-    color = vec4( result, alphaChannel );
-
-    // Descarte de fragmentos transparentes (醨boles PNG)
-    if( color.a < 0.1 && transparency == 1 )
-        discard;
+    // Emisi贸n (Tus fantasmas y velas)
+    if(useEmission == 1) {
+        result += emissionColor * emissionStrength;
+    }
+    
+    // CORRECCI脫N: Rescatamos la transparencia original del canal alfa de tu textura
+    float alpha = texture(material.diffuse, uv).a;
+    if (transparency == 0) {
+        alpha = 1.0;
+    }
+    
+    FragColor = vec4(result, alpha);
 }
+
+// =========================================================
+// DEFINICIONES DE FUNCIONES
+// =========================================================
 
 vec3 CalcDirLight( DirLight light, vec3 normal, vec3 viewDir, vec2 uv )
 {
