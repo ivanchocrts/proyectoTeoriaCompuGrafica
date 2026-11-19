@@ -1,10 +1,10 @@
 #version 330 core
-in vec3 TexCoords;
 out vec4 color;
 
-uniform samplerCube skybox;
+uniform vec3 starColor;
 
 void main()
 {
-    color = texture(skybox, TexCoords);
+    // Emite color directo sin atenuación ni sombras
+    color = vec4(starColor, 1.0);
 }
