@@ -56,7 +56,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Iluminacion.cpp">
-      <Filter>Archivos de origen\Shader</Filter>
+      <Filter>Archivos de origen</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

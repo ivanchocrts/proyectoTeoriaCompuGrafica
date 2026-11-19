@@ -1,0 +1,18 @@
+# 3ds Max Wavefront OBJ Exporter v0.99 - (c)2007 guruware
+# File Created: 01.11.2026 19:22:05
+
+newmtl modelsprops_halloweenscary_ghost
+	Kd 1.0000 1.0000 1.0000
+	Ks 0.0000 0.0000 0.0000
+	Tr 0.0000
+	d 1.0000
+	Tf 1.0000 1.0000 1.0000
+	Pr 0.0039
+	Pm 0.0000
+	Pc 0.0000
+	Pcr 0.0000
+	Ni 1.5200
+	illum 2
+	map_Kd modelsprops_halloweenscary_ghost_baseColor.png
+	map_Ke -bm 0.0000 OSLMap_osl__Multiply__color_.tga
+	norm modelsprops_halloweenscary_ghost_normal.png

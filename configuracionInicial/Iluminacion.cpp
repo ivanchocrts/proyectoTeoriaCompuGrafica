@@ -6,20 +6,15 @@
 
 // GLEW
 #include <GL/glew.h>
-
-// GLFW
 #include <GLFW/glfw3.h>
-
-// Other Libs
 #include "SOIL2/SOIL2.h"
 #include "stb_image.h"
-
-// GLM Mathematics
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include "stb_easy_font.h"
+#include <vector>
 
-// GL includes
 #include "Shader.h"
 #include "Camera.h"
 #include "Model.h"
@@ -36,21 +31,64 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 void MouseCallback(GLFWwindow* window, double xPos, double yPos);
 void DoMovement();
 
-// Cámara
+// Cmara
 Camera camera(glm::vec3(0.0f, 2.0f, 10.0f));
 bool keys[1024];
 GLfloat lastX = WIDTH / 2.0f;
 GLfloat lastY = HEIGHT / 2.0f;
 bool firstMouse = true;
 
-// Luz direccional (sol fijo, ya sin animación)
-glm::vec3 dirLightDir(-0.3f, -1.0f, -0.2f); // dirección desde donde viene la luz
+//Audio
+ma_engine audioEngine;
+ma_sound musicaFondo;
+bool musicaActiva = true;
+
+bool person = false;
+float cameraDistance = 8.0f;
+float cameraHeight = 2.3f;
+float cameraYaw = 0.0f;
+float cameraPitch = 10.0f;
+
+float mouseSensitivity = 0.4f;
+
+float giroPerson = 180.0f,
+personX = 0.0f,
+personY = 1.0f,
+personZ = 0.0f;
+
+float rotBrazoDer = 0.0f,
+rotBrazoIzq = 0.0f,
+rotPiernaDer = 0.0f,
+rotPiernaIzq = 0.0f,
+rotCabezaSi = 0.0f,
+rotCabezaNo = 0.0f;
+
+bool mov = false;
+float tiempoCaminata = 0.0f;
+float anguloMaximo = 80.0f;
+float anguloCaminata = 0.0f;
+float velocidadCaminata = 40.0f;
+float direccionCaminata = 1.0f;
+
+//Para las vistas pedidas
+bool verEscen = false;
+bool verAnim = false;
+bool verModel = false;
+
+bool animTraja = false;
+int etapaTraja = 0;
+float trajaX = -8.0f;      
+float trajaZ = -20.0f;     
+float trajaRotY = 20.0f;   
+
+// Luz direccional (sol fijo, ya sin animaciï¿½n)
+glm::vec3 dirLightDir(-0.3f, -1.0f, -0.2f); // direcciï¿½n desde donde viene la luz
 
 // DeltaTime
 GLfloat deltaTime = 0.0f;
 GLfloat lastFrame = 0.0f;
 
-// Cubo unitario para las lámparas (por si luego quieres volver a usar lampShader)
+// Cubo unitario para las lï¿½mparas (por si luego quieres volver a usar lampShader)
 float vertices[] = {
     -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
      0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
@@ -98,13 +136,25 @@ float vertices[] = {
 int main()
 {
     glfwInit();
+
+    // Obtener resolucin del monitor
+    const GLFWvidmode* modo = glfwGetVideoMode(glfwGetPrimaryMonitor());
+
+    SCREEN_WIDTH = modo->width;
+    SCREEN_HEIGHT = modo->height;
+
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Proyecto final. Computacion grafica", nullptr, nullptr);
+    //GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Proyecto final. Computacion grafica", nullptr, nullptr);
+
+    // Crear ventana con resolucin del monitor
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Proyecto final. Computacion grafica", primaryMonitor, nullptr);
 
     if (nullptr == window)
     {
@@ -118,6 +168,7 @@ int main()
 
     glfwSetKeyCallback(window, KeyCallback);
     glfwSetCursorPosCallback(window, MouseCallback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     glewExperimental = GL_TRUE;
     if (GLEW_OK != glewInit())
@@ -128,10 +179,23 @@ int main()
 
     glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    // Opciones globales OpenGL
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Audio
+    if (ma_engine_init(NULL, &audioEngine) != MA_SUCCESS)
+        std::cout << "No se pudo iniciar el audio" << std::endl;
+
+    if (ma_sound_init_from_file(&audioEngine, "Audio/pista1.mp3",
+        MA_SOUND_FLAG_STREAM, NULL, NULL, &musicaFondo) != MA_SUCCESS)
+        std::cout << "No se encontro Audio/pista1.mp3" << std::endl;
+    else
+    {
+        ma_sound_set_looping(&musicaFondo, MA_TRUE);  
+        ma_sound_set_volume(&musicaFondo, 0.5f);      
+        ma_sound_start(&musicaFondo);
+    }
 
     // Shaders
     Shader lightingShader("Shader/lighting.vs", "Shader/lighting.frag");
@@ -139,7 +203,7 @@ int main()
     Shader skyboxShader("Shader/SkyBox.vs", "Shader/SkyBox.frag");
 
     // ============================================================
-    // SKYBOX: vértices del cubo (dentro de main)
+    // SKYBOX: vï¿½rtices del cubo (dentro de main)
     // ============================================================
     GLfloat skyboxVertices[] = {
         -1.0f,  1.0f, -1.0f,
@@ -214,12 +278,12 @@ int main()
     Model escena_principal((char*)"Models/escenaCompleta.obj");
     Model agua((char*)"Models/agua.obj");
 
-    // Configuración inicial del shader de iluminación
+    // Configuraciï¿½n inicial del shader de iluminaciï¿½n
     lightingShader.Use();
     glUniform1i(glGetUniformLocation(lightingShader.Program, "material.diffuse"), 0);
     glUniform1i(glGetUniformLocation(lightingShader.Program, "material.specular"), 1);
 
-    // Configuración del skybox (unidad de textura 0, ya que no compite con nada)
+    // Configuraciï¿½n del skybox (unidad de textura 0, ya que no compite con nada)
     skyboxShader.Use();
     glUniform1i(glGetUniformLocation(skyboxShader.Program, "skybox"), 0);
 
@@ -242,6 +306,27 @@ int main()
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // ====================================================================
+        // RENDERIZADO DEL SKYBOX / CAMPO DE ESTRELLAS
+        // ====================================================================
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_FALSE); 
+
+        skyboxShader.Use();
+        glm::mat4 skyView = glm::mat4(glm::mat3(camera.GetViewMatrix()));
+
+        glUniformMatrix4fv(glGetUniformLocation(skyboxShader.Program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(glGetUniformLocation(skyboxShader.Program, "view"), 1, GL_FALSE, glm::value_ptr(skyView));
+
+        glm::mat4 modelSky = glm::mat4(1.0f);
+        modelSky = glm::rotate(modelSky, (float)glfwGetTime() * 0.02f, glm::vec3(0.0f, 1.0f, 0.0f));
+        glUniformMatrix4fv(glGetUniformLocation(skyboxShader.Program, "model"), 1, GL_FALSE, glm::value_ptr(modelSky));
+        glUniform3f(glGetUniformLocation(skyboxShader.Program, "starColor"), 1.0f, 1.0f, 1.0f);
+        skyStars.Draw(skyboxShader);
+
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+
         glm::mat4 view = camera.GetViewMatrix();
 
         // --------------------------------------------------------
@@ -261,7 +346,7 @@ int main()
         glUniform3f(glGetUniformLocation(lightingShader.Program, "dirLight.specular"), 0.5f, 0.5f, 0.5f);
 
         // --- LUZ PUNTUAL: ELIMINADA (era la luna) ---
-        // Si tu shader requiere que pointLights[0] tenga valores válidos, ponla a cero:
+        // Si tu shader requiere que pointLights[0] tenga valores vï¿½lidos, ponla a cero:
         glUniform3f(glGetUniformLocation(lightingShader.Program, "pointLights[0].position"), 0.0f, 0.0f, 0.0f);
         glUniform3f(glGetUniformLocation(lightingShader.Program, "pointLights[0].ambient"), 0.0f, 0.0f, 0.0f);
         glUniform3f(glGetUniformLocation(lightingShader.Program, "pointLights[0].diffuse"), 0.0f, 0.0f, 0.0f);
@@ -286,11 +371,66 @@ int main()
 
         glUniform1f(glGetUniformLocation(lightingShader.Program, "material.shininess"), 32.0f);
 
+        glUniform1i(glGetUniformLocation(lightingShader.Program, "activePointLights"), 12);
+
+        // ====================================================================
+        // 1. LUZ DIRECCIONAL (LUNA)
+        // ====================================================================
+        glUniform3f(glGetUniformLocation(lightingShader.Program, "dirLight.direction"), -0.2f, -1.0f, -0.3f);
+        glUniform3f(glGetUniformLocation(lightingShader.Program, "dirLight.ambient"), 0.05f, 0.05f, 0.12f);
+        glUniform3f(glGetUniformLocation(lightingShader.Program, "dirLight.diffuse"), 0.15f, 0.20f, 0.35f);
+        glUniform3f(glGetUniformLocation(lightingShader.Program, "dirLight.specular"), 0.1f, 0.1f, 0.2f);
+
+        // ====================================================================
+        // 2. CONFIGURAR LUZ
+        // ====================================================================
+        glm::vec3 farolPositions[12] = {
+            glm::vec3(-10.0f, 2.0f, 3.0f), glm::vec3(10.0f, 2.0f, 3.0f),
+            glm::vec3(-19.0f, 1.0f, 5.0f), glm::vec3(19.0f, 1.0f, 5.0f),
+            glm::vec3(-30.0f, 2.0f, 3.0f), glm::vec3(30.0f, 2.0f, 3.0f),
+            glm::vec3(-10.0f, 2.0f, 27.0f), glm::vec3(10.0f, 2.0f, 27.0f),
+            glm::vec3(-30.0f, 2.0f, 27.0f), glm::vec3(30.0f, 2.0f, 27.0f),
+            glm::vec3(0.0f, 0.0f, -43.0f), glm::vec3(0.0f, 0.0f, -43.0f)
+        };
+
+        for (int i = 0; i < 10; i++) {
+            std::string number = std::to_string(i);
+
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].position").c_str()), farolPositions[i].x, farolPositions[i].y, farolPositions[i].z);
+
+            // Color de luz clida de farol
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].ambient").c_str()), 0.1f, 0.08f, 0.05f);
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].diffuse").c_str()), 0.8f, 0.6f, 0.3f);
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].specular").c_str()), 0.8f, 0.6f, 0.3f);
+
+            // Atenuacin
+            glUniform1f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].constant").c_str()), 1.0f);
+            glUniform1f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].linear").c_str()), 0.22f);
+            glUniform1f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].quadratic").c_str()), 0.019f);
+        }
+
+        for (int i = 10; i < 12; i++) {
+            std::string number = std::to_string(i);
+
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].position").c_str()), farolPositions[i].x, farolPositions[i].y, farolPositions[i].z);
+
+            // Color de luz clida de farol
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].ambient").c_str()), 0.1f, 0.08f, 0.05f);
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].diffuse").c_str()), 0.8f, 0.6f, 0.3f);
+            glUniform3f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].specular").c_str()), 0.8f, 0.6f, 0.3f);
+
+            // Atenuacin
+            glUniform1f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].constant").c_str()), 1.0f);
+            glUniform1f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].linear").c_str()), 0.044f);
+            glUniform1f(glGetUniformLocation(lightingShader.Program, ("pointLights[" + number + "].quadratic").c_str()), 0.0038f);
+        }
+
         // Escena principal
         glUniform1i(glGetUniformLocation(lightingShader.Program, "isWater"), 0);
         glUniform1i(glGetUniformLocation(lightingShader.Program, "transparency"), 1);
+        glUniform1i(glGetUniformLocation(lightingShader.Program, "useEmission"), 0); 
 
-        glm::mat4 modelEscena(1.0f);
+        glm::mat4 modelEscena = glm::mat4(1.0f);
         glUniformMatrix4fv(glGetUniformLocation(lightingShader.Program, "model"), 1, GL_FALSE, glm::value_ptr(modelEscena));
         escena_principal.Draw(lightingShader);
 
@@ -302,9 +442,9 @@ int main()
         glUniform1f(glGetUniformLocation(lightingShader.Program, "waveSpeed"), 1.8f);
         glUniform2f(glGetUniformLocation(lightingShader.Program, "waterSpeed"), 0.02f, 0.01f);
 
-        glm::mat4 modelAgua(1.0f);
-        glUniformMatrix4fv(glGetUniformLocation(lightingShader.Program, "model"), 1, GL_FALSE, glm::value_ptr(modelAgua));
-        agua.Draw(lightingShader);
+        glm::mat4 modelPapel = glm::mat4(1.0f);
+        glUniformMatrix4fv(glGetUniformLocation(papelShader.Program, "model"), 1, GL_FALSE, glm::value_ptr(modelPapel));
+        papel.Draw(papelShader);
 
         // --------------------------------------------------------
         // SKYBOX (al final, con LEQUAL)
@@ -374,5 +514,17 @@ void MouseCallback(GLFWwindow* window, double xPos, double yPos)
     lastX = (GLfloat)xPos;
     lastY = (GLfloat)yPos;
 
-    camera.ProcessMouseMovement(xOffset, yOffset);
+    if (person) {
+        //giroMonito += (float)xoffset * 0.1;
+        giroPerson -= (float)xOffset * mouseSensitivity;
+
+        // El movimiento vertical inclina solamente la cmara
+        cameraPitch += yOffset * mouseSensitivity * 3;
+
+        // Limitar la inclinacin para evitar que la cmara d vueltas
+        cameraPitch = glm::clamp(cameraPitch, -7.0f, 40.0f);
+    }
+    else {
+        camera.ProcessMouseMovement(xOffset, yOffset);
+    }
 }
