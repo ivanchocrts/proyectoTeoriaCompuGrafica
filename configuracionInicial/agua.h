@@ -17,6 +17,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <algorithm>
 
 namespace aguaDetalle
 {
@@ -45,6 +46,9 @@ public:
 	float velocidad = 2.0f;		// qué tan rápido se mueven
 	glm::vec3 colorAgua = glm::vec3(0.05f, 0.35f, 0.55f);
 	float transparencia = 0.85f;	// 1.0 = opaca
+	float brilloCrestas = 0.12f;	// manchas claras en las crestas de las olas (0 = ninguna, 0.6 = muy blancas)
+	float brilloEspecular = 0.25f;	// destellos de luz sobre el agua (0 = sin destellos)
+	float brilloFresnel = 0.25f;	// velo claro a ras de agua y a distancia (0 = sin velo)
 	glm::vec3 luzDir = glm::vec3(-0.5f, -0.7f, -0.5f);
 	glm::vec3 luzColor = glm::vec3(1.0f, 0.97f, 0.9f);
 
@@ -123,6 +127,10 @@ uniform float tiling;
 uniform int useTexture;
 uniform sampler2D texture_diffuse1;
 
+uniform float brilloCrestas;
+uniform float brilloEspecular;
+uniform float brilloFresnel;
+
 void main()
 {
 	vec3 base = colorAgua;
@@ -135,6 +143,12 @@ void main()
 	}
 
 	// Las crestas de las olas se ven más claras (hace que el movimiento se note mucho)
+	float cresta = smoothstep(0.35, 1.0, Altura);
+	base = mix(base, vec3(0.45, 0.65, 0.80), cresta * brilloCrestas);
+
+	// Patrón que se mueve con el tiempo (da sensación de corriente aunque no haya textura)
+	float patron = sin(FragPos.x * 1.3 + uTime * 2.0) * sin(FragPos.z * 1.1 - uTime * 1.6);
+	base = clamp(base + patron * 0.03, 0.0, 1.0);
 	float cresta = smoothstep(0.2, 1.0, Altura);
 	base = mix(base, vec3(0.75, 0.92, 1.0), cresta * 0.6);
 
@@ -248,6 +262,78 @@ void main()
 		glBindVertexArray(0);
 	}
 
+	// Crea el agua a partir de TRIÁNGULOS en el plano XZ, a una altura 'y' (coordenadas de mundo:
+	// se dibuja con matriz identidad). Sirve para que el agua tenga la forma EXACTA de un foso o estanque.
+	//   tris        = lista de puntos, de 3 en 3 (cada 3 puntos = un triángulo; x = X, y = Z)
+	//   divisiones  = en cuántas partes se divide cada lado de cada triángulo (más = olas más suaves)
+	//   uvPorUnidad = repeticiones de textura por unidad de escena (solo si usas textura)
+	void initTriangulos(const std::vector<glm::vec2>& tris, float y, int divisiones = 40, float uvPorUnidad = 0.1f)
+	{
+		std::vector<float> v;
+		std::vector<unsigned int> idx;
+		int n = divisiones;
+
+		for (size_t t = 0; t + 2 < tris.size(); t += 3)
+		{
+			glm::vec2 a = tris[t], b = tris[t + 1], c = tris[t + 2];
+			// que la cara mire hacia arriba (+Y)
+			float cy = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y);
+			if (cy < 0.0f) std::swap(b, c);
+
+			unsigned int base = (unsigned int)(v.size() / 8);
+
+			// vértices (i, j) con i + j <= n
+			for (int i = 0; i <= n; i++)
+			{
+				for (int j = 0; j <= n - i; j++)
+				{
+					glm::vec2 p = a + (b - a) * ((float)i / (float)n) + (c - a) * ((float)j / (float)n);
+					v.push_back(p.x); v.push_back(y); v.push_back(p.y);		// posición
+					v.push_back(0.0f); v.push_back(1.0f); v.push_back(0.0f);	// normal (arriba)
+					v.push_back(p.x * uvPorUnidad); v.push_back(p.y * uvPorUnidad);	// texcoords
+				}
+			}
+
+			// índice del vértice (i, j) dentro de este triángulo
+			auto id = [&](int i, int j) -> unsigned int
+			{
+				return base + (unsigned int)(i * (n + 1) - (i * (i - 1)) / 2 + j);
+			};
+
+			for (int i = 0; i < n; i++)
+			{
+				for (int j = 0; j < n - i; j++)
+				{
+					idx.push_back(id(i, j)); idx.push_back(id(i + 1, j)); idx.push_back(id(i, j + 1));
+					if (j < n - i - 1)
+					{
+						idx.push_back(id(i + 1, j)); idx.push_back(id(i + 1, j + 1)); idx.push_back(id(i, j + 1));
+					}
+				}
+			}
+		}
+		indexCount = (unsigned int)idx.size();
+
+		glGenVertexArrays(1, &VAO);
+		glGenBuffers(1, &VBO);
+		glGenBuffers(1, &EBO);
+
+		glBindVertexArray(VAO);
+		glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBufferData(GL_ARRAY_BUFFER, v.size() * sizeof(float), v.data(), GL_STATIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx.size() * sizeof(unsigned int), idx.data(), GL_STATIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+		glEnableVertexAttribArray(2);
+
+		glBindVertexArray(0);
+	}
+
 	// Manda todos los uniforms al shader del agua y activa la transparencia.
 	// (el "model" lo manda quien dibuja)
 	template <typename S>
@@ -271,6 +357,9 @@ void main()
 		setVec3(p, "lightColor", luzColor);
 		setVec3(p, "colorAgua", colorAgua);
 		setFloat(p, "alpha", transparencia);
+		setFloat(p, "brilloCrestas", brilloCrestas);
+		setFloat(p, "brilloEspecular", brilloEspecular);
+		setFloat(p, "brilloFresnel", brilloFresnel);
 
 		setVec2(p, "waterSpeed", scrollTextura);
 		setFloat(p, "tiling", tiling);

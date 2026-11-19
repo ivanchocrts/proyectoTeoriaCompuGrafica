@@ -113,7 +113,7 @@ private:
 			vector.z = mesh->mVertices[i].z;
 			vertex.Position = vector;
 
-			// Normals con verificación de existencia
+			// Normals con verificaciï¿½n de existencia
 			if (mesh->HasNormals())
 			{
 				vector.x = mesh->mNormals[i].x;
@@ -195,7 +195,7 @@ private:
 			if (!skip)
 			{
 				GLint id = TextureFromFile(str.C_Str(), this->directory);
-				// Solo añade la textura si se cargó un ID válido
+				// Solo aï¿½ade la textura si se cargï¿½ un ID vï¿½lido
 				if (id != 0)
 				{
 					Texture texture;
@@ -218,7 +218,7 @@ GLint TextureFromFile(const char* path, string directory)
 	string filename = string(path);
 	filename = directory + '/' + filename;
 
-	// Impresión de depuración para identificar la imagen conflictiva
+	// Impresiï¿½n de depuraciï¿½n para identificar la imagen conflictiva
 	std::cout << "[INTENTANDO CARGAR TEXTURA]: " << filename << std::endl;
 
 	int width, height, channels;
@@ -231,7 +231,7 @@ GLint TextureFromFile(const char* path, string directory)
 		GLuint textureID;
 		glGenTextures(1, &textureID);
 
-		// Detecta el formato adecuado según la cantidad de canales de la imagen
+		// Detecta el formato adecuado segï¿½n la cantidad de canales de la imagen
 		GLenum format = GL_RGB;
 		if (channels == 4)
 		{

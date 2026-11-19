@@ -18,6 +18,10 @@ uniform float tiling;
 uniform int useTexture;
 uniform sampler2D texture_diffuse1;
 
+uniform float brilloCrestas;
+uniform float brilloEspecular;
+uniform float brilloFresnel;
+
 void main()
 {
 	vec3 base = colorAgua;
